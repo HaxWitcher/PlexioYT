@@ -330,6 +330,10 @@ app.set('trust proxy', true);
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use((req, _res, next) => {
+    console.log(req.method, req.originalUrl);
+    next();
+});
 
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -856,38 +860,63 @@ app.get('/:config/stream/:type/:id.json', async (req, res, next) => {
 });
 
 // Stremio Addon Subtitles Route
-app.get('/:config/subtitles/:type/:id.json', async (req, res, next) => {
-    try {
-        if (!req.params.id?.startsWith(prefix)) throw new Error(`Unknown ID in Subtitles handler: "${req.params.id}"`);
-        const userConfig = decryptConfig(req.params.config, false);
-        const video = await runYtDlpWithAuth(toYouTubeURL(userConfig, req.params.id, {}), req.params.config, [
-            '-I', ':1',
-            '--no-playlist'
-        ]);
-        return res.json({
-            subtitles: [
-                ...Object.entries(video.subtitles ?? {}).map(([k, v]) => {
-                    const srt = v.find(x => x.ext == 'srt') ?? v[0];
-                    return srt ? {
-                        id: srt.name,
-                        url: srt.url,
-                        lang: k
-                    } : null;
-                }), ...Object.entries(video.automatic_captions ?? {}).map(([k, v]) => {
-                    const srt = v.find(x => x.ext == 'srt') ?? v[0];
-                    return srt ? {
-                        id: `Auto ${srt.name}`,
-                        url: srt.url,
-                        lang: k
-                    } : null;
-                })
-            ].filter(srt => srt !== null)
-        });
-    } catch (error) {
-        res.json({ subtitles: [] });
-        return next(error)
+app.get(
+    [
+        '/:config/subtitles/:type/:id.json',
+        '/:config/subtitles/:type/:id/:extra.json'
+    ],
+    async (req, res, next) => {
+        try {
+            if (!req.params.id?.startsWith(prefix)) {
+                throw new Error(`Unknown ID in Subtitles handler: "${req.params.id}"`);
+            }
+
+            const userConfig = decryptConfig(req.params.config, false);
+            const video = await runYtDlpWithAuth(
+                toYouTubeURL(userConfig, req.params.id, {}),
+                req.params.config,
+                [
+                    '-I', ':1',
+                    '--no-playlist'
+                ]
+            );
+
+            const pickBestSubtitle = (tracks) => {
+                if (!Array.isArray(tracks) || tracks.length === 0) return null;
+                return (
+                    tracks.find(x => x.ext === 'srt') ||
+                    tracks.find(x => x.ext === 'vtt') ||
+                    tracks[0]
+                );
+            };
+
+            const manualSubs = Object.entries(video.subtitles ?? {}).map(([lang, tracks]) => {
+                const best = pickBestSubtitle(tracks);
+                return best ? {
+                    id: best.name || lang,
+                    url: best.url,
+                    lang
+                } : null;
+            });
+
+            const autoSubs = Object.entries(video.automatic_captions ?? {}).map(([lang, tracks]) => {
+                const best = pickBestSubtitle(tracks);
+                return best ? {
+                    id: `Auto ${best.name || lang}`,
+                    url: best.url,
+                    lang
+                } : null;
+            });
+
+            return res.json({
+                subtitles: [...manualSubs, ...autoSubs].filter(Boolean)
+            });
+        } catch (error) {
+            res.json({ subtitles: [] });
+            return next(error);
+        }
     }
-});
+);
 
 // Configuration Page
 app.get(['/', '/:config?/configure'], async (req, res) => {
