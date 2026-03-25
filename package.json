@@ -1,0 +1,21 @@
+{
+  "name": "YouTubio",
+  "version": "0.14.7",
+  "description": "A Stremio addon that lets you watch YouTube videos and access your subscriptions, watch later list, and history directly inside Stremio.",
+  "main": "addon.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env addon.js",
+    "local": "concurrently \"npm start\" \"npx ngrok http 7000\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cache": "^5.1.2",
+    "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node-cache": "^4.1.3",
+    "concurrently": "^9.2.1",
+    "ngrok": "^5.0.0-beta.2"
+  }
+}
